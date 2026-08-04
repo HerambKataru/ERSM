@@ -1,0 +1,110 @@
+{
+  "agent": {
+    "name": "ERSM Host Agent",
+    "version": "1.0.0",
+    "host_id": "auto",
+    "log_level": "INFO"
+  },
+  "storage": {
+    "json_log_path": "logs/events.jsonl",
+    "db_path": "storage/ersm.db",
+    "fim_baseline_path": "storage/fim_baseline.json"
+  },
+  "monitors": {
+    "system": {
+      "enabled": true,
+      "interval_seconds": 5,
+      "cpu_threshold_percent": 90.0,
+      "cpu_duration_seconds": 30,
+      "ram_threshold_percent": 90.0,
+      "ram_duration_seconds": 30,
+      "disk_threshold_percent": 95.0
+    },
+    "auth": {
+      "enabled": true,
+      "interval_seconds": 5,
+      "failure_threshold": 5,
+      "time_window_seconds": 60
+    },
+    "network": {
+      "enabled": true,
+      "interval_seconds": 5,
+      "port_scan_threshold_ports": 20,
+      "port_scan_window_seconds": 10,
+      "connection_flood_threshold": 500
+    },
+    "arp": {
+      "enabled": true,
+      "interval_seconds": 10
+    },
+    "process": {
+      "enabled": true,
+      "interval_seconds": 5,
+      "cpu_hog_threshold": 90.0,
+      "mem_hog_threshold_mb": 1024,
+      "spawn_burst_threshold": 15,
+      "spawn_burst_window_seconds": 5
+    },
+    "file_integrity": {
+      "enabled": true,
+      "interval_seconds": 10,
+      "monitored_paths": [
+        "config"
+      ],
+      "rapid_modification_threshold": 30,
+      "rapid_modification_window_seconds": 10
+    },
+    "persistence": {
+      "enabled": true,
+      "interval_seconds": 15
+    },
+    "dns": {
+      "enabled": true,
+      "interval_seconds": 10
+    },
+    "usb": {
+      "enabled": true,
+      "interval_seconds": 10
+    },
+    "external_security": {
+      "enabled": true
+    }
+  },
+  "risk_engine": {
+    "weights": {
+      "INFO": 0,
+      "LOW": 5,
+      "MEDIUM": 15,
+      "HIGH": 30,
+      "CRITICAL": 50
+    },
+    "decay_interval_seconds": 10,
+    "decay_amount": 2,
+    "rate_limit_window_seconds": 60,
+    "max_duplicate_points": 2,
+    "thresholds": {
+      "SAFE": [0, 29],
+      "WARNING": [30, 59],
+      "HIGH_RISK": [60, 79],
+      "CRITICAL": [80, 100]
+    }
+  },
+  "correlation_engine": {
+    "enabled": true,
+    "time_window_seconds": 60
+  },
+  "transport": {
+    "console": {
+      "enabled": true,
+      "banner_refresh_seconds": 2
+    },
+    "json_logger": {
+      "enabled": true
+    },
+    "serial": {
+      "enabled": false,
+      "port": "/dev/tty.usbmodem14101",
+      "baudrate": 115200
+    }
+  }
+}

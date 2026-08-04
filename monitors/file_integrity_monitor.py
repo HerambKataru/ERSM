@@ -1,6 +1,6 @@
 """
-File Integrity Monitor (FIM) for Embedded Runtime Security Monitor (ERSM).
-Computes SHA-256 hashes, compares against persistent baselines, and detects rapid mass modification bursts.
+File Integrity & Activity Monitor (FIM) for Embedded Runtime Security Monitor (ERSM).
+Computes SHA-256 hashes, monitors permission changes (mode/ACL), tracks file creation/deletion, and detects mass file modifications.
 """
 
 import hashlib
@@ -14,7 +14,7 @@ from monitors.base_monitor import BaseMonitor
 
 class FileIntegrityMonitor(BaseMonitor):
     """
-    Monitors target files/directories using SHA-256 hashes against a trusted baseline database.
+    Monitors target files/directories for creation, deletion, modifications, permissions changes, and mass bursts.
     """
 
     def __init__(self, event_bus, platform_adapter, config: Dict[str, Any] = None):
@@ -41,7 +41,7 @@ class FileIntegrityMonitor(BaseMonitor):
             return None
 
     def get_file_metadata(self, filepath: str) -> Optional[Dict[str, Any]]:
-        """Returns file metadata: sha256, size, mtime, permissions."""
+        """Returns file metadata: sha256, size, mtime, permissions (mode)."""
         if not os.path.exists(filepath) or not os.path.isfile(filepath):
             return None
         try:
@@ -79,7 +79,6 @@ class FileIntegrityMonitor(BaseMonitor):
         os.makedirs(os.path.dirname(os.path.abspath(self.baseline_path)), exist_ok=True)
         state = self.scan_monitored_targets()
         with open(self.baseline_path, "w", encoding="utf-8") as f:
-            json.dumps(state, indent=2)
             json.dump(state, f, indent=2)
         self.logger.info(f"Created FIM baseline with {len(state)} files stored in {self.baseline_path}.")
         return len(state)
@@ -106,15 +105,16 @@ class FileIntegrityMonitor(BaseMonitor):
         now = time.time()
         modifications_count = 0
 
-        # Check for modifications & deletions
+        # Check for modifications, permission changes & deletions
         for path, old_meta in baseline.items():
             if path not in current_state:
                 event = SecurityEvent(
-                    category=EventCategory.INTEGRITY.value,
+                    category=EventCategory.FILE_ACTIVITY.value,
                     event="FILE_DELETED",
                     severity=EventSeverity.HIGH.value,
                     confidence=EventConfidence.HIGH.value,
                     risk=30,
+                    module=self.name,
                     message=f"Monitored file deleted: {path}",
                     metadata={"path": path}
                 )
@@ -122,6 +122,26 @@ class FileIntegrityMonitor(BaseMonitor):
                 modifications_count += 1
             else:
                 new_meta = current_state[path]
+
+                # Permission (mode) Change Detection
+                if old_meta.get("mode") != new_meta.get("mode"):
+                    event = SecurityEvent(
+                        category=EventCategory.FILE_ACTIVITY.value,
+                        event="FILE_PERMISSION_CHANGED",
+                        severity=EventSeverity.MEDIUM.value,
+                        confidence=EventConfidence.HIGH.value,
+                        risk=15,
+                        module=self.name,
+                        message=f"File permissions changed for {path}: Old={old_meta.get('mode')}, New={new_meta.get('mode')}",
+                        metadata={
+                            "path": path,
+                            "old_mode": old_meta.get("mode"),
+                            "new_mode": new_meta.get("mode")
+                        }
+                    )
+                    self.publish_event(event)
+
+                # SHA-256 Hash Modification Detection
                 if old_meta.get("sha256") != new_meta.get("sha256"):
                     event = SecurityEvent(
                         category=EventCategory.INTEGRITY.value,
@@ -129,6 +149,7 @@ class FileIntegrityMonitor(BaseMonitor):
                         severity=EventSeverity.HIGH.value,
                         confidence=EventConfidence.HIGH.value,
                         risk=30,
+                        module=self.name,
                         message=f"Monitored file modified: SHA-256 hash mismatch for {path}",
                         metadata={
                             "path": path,
@@ -143,18 +164,19 @@ class FileIntegrityMonitor(BaseMonitor):
         for path in current_state:
             if path not in baseline:
                 event = SecurityEvent(
-                    category=EventCategory.INTEGRITY.value,
+                    category=EventCategory.FILE_ACTIVITY.value,
                     event="FILE_CREATED",
                     severity=EventSeverity.LOW.value,
                     confidence=EventConfidence.HIGH.value,
                     risk=5,
+                    module=self.name,
                     message=f"New file created in monitored path: {path}",
                     metadata={"path": path}
                 )
                 self.publish_event(event)
                 modifications_count += 1
 
-        # Rapid File Modification Detection (Mass File Change)
+        # Rapid File Modification Detection (MASS_FILE_CHANGE)
         if modifications_count > 0:
             for _ in range(modifications_count):
                 self._modification_history.append(now)
@@ -165,12 +187,13 @@ class FileIntegrityMonitor(BaseMonitor):
         if len(self._modification_history) >= self.rapid_modification_threshold:
             if (now - self._last_mass_alert_time) >= self.rapid_window_seconds:
                 event = SecurityEvent(
-                    category=EventCategory.INTEGRITY.value,
+                    category=EventCategory.FILE_ACTIVITY.value,
                     event="MASS_FILE_CHANGE",
                     severity=EventSeverity.HIGH.value,
                     confidence=EventConfidence.HIGH.value,
                     risk=30,
-                    message=f"Rapid File Modification Burst: {len(self._modification_history)} files changed within {self.rapid_window_seconds}s.",
+                    module=self.name,
+                    message=f"Rapid Mass File Change Burst: {len(self._modification_history)} files created/modified/deleted within {self.rapid_window_seconds}s.",
                     metadata={"modifications_count": len(self._modification_history)}
                 )
                 self.publish_event(event)

@@ -1,7 +1,7 @@
 {
   "agent": {
     "name": "ERSM Host Agent",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "host_id": "auto",
     "log_level": "INFO"
   },
@@ -18,7 +18,8 @@
       "cpu_duration_seconds": 30,
       "ram_threshold_percent": 90.0,
       "ram_duration_seconds": 30,
-      "disk_threshold_percent": 95.0
+      "disk_threshold_percent": 95.0,
+      "process_count_threshold": 400
     },
     "auth": {
       "enabled": true,
@@ -31,11 +32,40 @@
       "interval_seconds": 5,
       "port_scan_threshold_ports": 20,
       "port_scan_window_seconds": 10,
-      "connection_flood_threshold": 500
+      "connection_flood_threshold": 500,
+      "outbound_threshold": 100,
+      "inbound_threshold": 50,
+      "spike_threshold": 80,
+      "unexpected_ports": [4444, 31337, 6667]
     },
-    "arp": {
+    "network_device": {
       "enabled": true,
       "interval_seconds": 10
+    },
+    "gateway": {
+      "enabled": true,
+      "interval_seconds": 10
+    },
+    "dns": {
+      "enabled": true,
+      "interval_seconds": 10,
+      "trusted_dns_servers": ["8.8.8.8", "1.1.1.1"],
+      "failure_threshold": 5,
+      "burst_threshold": 50,
+      "time_window_seconds": 30
+    },
+    "firewall": {
+      "enabled": true,
+      "interval_seconds": 10,
+      "block_event_threshold": 5,
+      "block_window_seconds": 30
+    },
+    "usb": {
+      "enabled": true,
+      "interval_seconds": 5,
+      "trusted_vendors": ["Apple Inc.", "Kingston", "SanDisk"],
+      "trusted_devices": ["Mouse", "Keyboard", "Headset"],
+      "trusted_serials": []
     },
     "process": {
       "enabled": true,
@@ -43,7 +73,9 @@
       "cpu_hog_threshold": 90.0,
       "mem_hog_threshold_mb": 1024,
       "spawn_burst_threshold": 15,
-      "spawn_burst_window_seconds": 5
+      "spawn_burst_window_seconds": 5,
+      "restart_loop_threshold": 5,
+      "suspicious_parents": ["word.exe", "excel.exe", "apache2", "nginx", "httpd", "python"]
     },
     "file_integrity": {
       "enabled": true,
@@ -58,16 +90,13 @@
       "enabled": true,
       "interval_seconds": 15
     },
-    "dns": {
-      "enabled": true,
-      "interval_seconds": 10
-    },
-    "usb": {
+    "arp": {
       "enabled": true,
       "interval_seconds": 10
     },
     "external_security": {
-      "enabled": true
+      "enabled": true,
+      "interval_seconds": 15
     }
   },
   "risk_engine": {
@@ -85,13 +114,14 @@
     "thresholds": {
       "SAFE": [0, 29],
       "WARNING": [30, 59],
-      "HIGH_RISK": [60, 79],
+      "HIGH": [60, 79],
       "CRITICAL": [80, 100]
     }
   },
   "correlation_engine": {
     "enabled": true,
-    "time_window_seconds": 60
+    "time_window_seconds": 60,
+    "custom_rules": []
   },
   "transport": {
     "console": {

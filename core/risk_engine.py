@@ -55,13 +55,17 @@ class RiskEngine:
 
     @property
     def status_label(self) -> str:
-        """Returns security status string (SAFE, WARNING, HIGH RISK, CRITICAL)."""
+        """Returns security status string (SAFE, WARNING, HIGH, CRITICAL)."""
         score = self.current_risk
-        if score >= self.thresholds.get("CRITICAL", [80, 100])[0]:
+        crit_thresh = self.thresholds.get("CRITICAL", [80, 100])[0]
+        high_thresh = self.thresholds.get("HIGH", self.thresholds.get("HIGH_RISK", [60, 79]))[0]
+        warn_thresh = self.thresholds.get("WARNING", [30, 59])[0]
+
+        if score >= crit_thresh:
             return "CRITICAL"
-        elif score >= self.thresholds.get("HIGH_RISK", [60, 79])[0]:
-            return "HIGH RISK"
-        elif score >= self.thresholds.get("WARNING", [30, 59])[0]:
+        elif score >= high_thresh:
+            return "HIGH"
+        elif score >= warn_thresh:
             return "WARNING"
         return "SAFE"
 

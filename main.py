@@ -35,6 +35,9 @@ from monitors.persistence_monitor import PersistenceMonitor
 from monitors.dns_monitor import DnsMonitor
 from monitors.usb_monitor import UsbMonitor
 from monitors.external_security_monitor import ExternalSecurityMonitor
+from monitors.firewall_monitor import FirewallMonitor
+from monitors.gateway_monitor import GatewayMonitor
+from monitors.network_device_monitor import NetworkDeviceMonitor
 from utils.logger import setup_logger
 from utils.simulation import trigger_simulation_event, SIMULATED_EVENTS
 
@@ -60,7 +63,8 @@ class ERSMAgent:
         self.risk_engine = RiskEngine(self.config.get("risk_engine", {}))
         self.correlation_engine = CorrelationEngine(
             event_bus=self.event_bus,
-            window_seconds=self.config.get("correlation_engine", {}).get("time_window_seconds", 60)
+            window_seconds=self.config.get("correlation_engine", {}).get("time_window_seconds", 60),
+            config=self.config.get("correlation_engine", {})
         )
         self.state_manager = StateManager()
         self.db = DatabaseManager(self.config.get("storage", {}).get("db_path", "storage/ersm.db"))
@@ -91,7 +95,10 @@ class ERSMAgent:
             PersistenceMonitor(self.event_bus, self.platform_adapter, monitors_cfg.get("persistence", {})),
             DnsMonitor(self.event_bus, self.platform_adapter, monitors_cfg.get("dns", {})),
             UsbMonitor(self.event_bus, self.platform_adapter, monitors_cfg.get("usb", {})),
-            ExternalSecurityMonitor(self.event_bus, self.platform_adapter, monitors_cfg.get("external_security", {}))
+            ExternalSecurityMonitor(self.event_bus, self.platform_adapter, monitors_cfg.get("external_security", {})),
+            FirewallMonitor(self.event_bus, self.platform_adapter, monitors_cfg.get("firewall", {})),
+            GatewayMonitor(self.event_bus, self.platform_adapter, monitors_cfg.get("gateway", {})),
+            NetworkDeviceMonitor(self.event_bus, self.platform_adapter, monitors_cfg.get("network_device", {}))
         ]
 
         # 5. Wire Event Bus Pipeline
@@ -144,7 +151,8 @@ class ERSMAgent:
             event="AGENT_STARTED",
             severity=EventSeverity.INFO.value,
             message=f"ERSM Host Agent started successfully on platform {self.platform_adapter.get_platform_name()}.",
-            risk=0
+            risk=0,
+            module="AgentEngine"
         )
         self.event_bus.publish(startup_event)
 
@@ -195,7 +203,8 @@ class ERSMAgent:
             event="AGENT_STOPPING",
             severity=EventSeverity.INFO.value,
             message="ERSM Host Agent background process stopping.",
-            risk=0
+            risk=0,
+            module="AgentEngine"
         )
         self.event_bus.publish(stopping_event)
         logger.info("ERSM Host Agent shutdown complete.")
@@ -212,6 +221,8 @@ Examples:
   python3 main.py --simulate-all              # Inject all simulation events sequentially
   python3 main.py --fim-init                  # Create baseline SHA-256 for file integrity monitor
   python3 main.py --query-recent 10           # Query last 10 SQLite security events
+  python3 main.py --query-category NETWORK    # Query events by category
+  python3 main.py --query-daily               # Query event counts by day
         """
     )
     parser.add_argument("--config", default="config/config.json", help="Path to config.json file")
@@ -221,6 +232,8 @@ Examples:
     parser.add_argument("--fim-verify", action="store_true", help="Verify File Integrity Monitor targets against baseline")
     parser.add_argument("--query-recent", type=int, help="Query N recent security events from SQLite database")
     parser.add_argument("--query-high-risk", action="store_true", help="Query highest risk events from SQLite database")
+    parser.add_argument("--query-category", help="Query events filtered by category (e.g. NETWORK, USB, FIREWALL)")
+    parser.add_argument("--query-daily", action="store_true", help="Query daily aggregated security event counts")
     return parser.parse_args()
 
 
@@ -228,18 +241,32 @@ def main():
     args = parse_args()
 
     # Query CLI mode
-    if args.query_recent or args.query_high_risk:
+    if args.query_recent or args.query_high_risk or args.query_category or args.query_daily:
         db = DatabaseManager("storage/ersm.db")
         if args.query_high_risk:
             print("\n=== HIGHEST RISK SECURITY EVENTS ===")
             events = db.get_highest_risk_events(limit=10)
+            for ev in events:
+                print(f"[{ev['timestamp']}] [{ev['severity']}] (Risk {ev['risk']}) {ev['event']}: {ev['message']}")
+            print(f"\nTotal records returned: {len(events)}\n")
+        elif args.query_category:
+            print(f"\n=== SECURITY EVENTS FOR CATEGORY: {args.query_category.upper()} ===")
+            events = db.get_events_by_category(args.query_category, limit=50)
+            for ev in events:
+                print(f"[{ev['timestamp']}] [{ev['severity']}] (Risk {ev['risk']}) {ev['event']}: {ev['message']}")
+            print(f"\nTotal records returned: {len(events)}\n")
+        elif args.query_daily:
+            print("\n=== DAILY AGGREGATED SECURITY EVENT COUNTS ===")
+            counts = db.get_daily_counts()
+            for row in counts:
+                print(f"Date: {row['date']} | Total Events: {row['count']}")
+            print(f"\nTotal days recorded: {len(counts)}\n")
         else:
             print(f"\n=== RECENT {args.query_recent} SECURITY EVENTS ===")
             events = db.get_recent_events(limit=args.query_recent)
-
-        for ev in events:
-            print(f"[{ev['timestamp']}] [{ev['severity']}] (Risk {ev['risk']}) {ev['event']}: {ev['message']}")
-        print(f"\nTotal records returned: {len(events)}\n")
+            for ev in events:
+                print(f"[{ev['timestamp']}] [{ev['severity']}] (Risk {ev['risk']}) {ev['event']}: {ev['message']}")
+            print(f"\nTotal records returned: {len(events)}\n")
         return
 
     # FIM Init mode

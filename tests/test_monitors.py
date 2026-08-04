@@ -19,7 +19,9 @@ class TestMonitors(unittest.TestCase):
             platform_adapter=mock_adapter,
             config={
                 "cpu_threshold_percent": 90.0,
-                "cpu_duration_seconds": 1  # 1s duration for fast unit testing
+                "cpu_duration_seconds": 1,  # 1s duration for fast unit testing
+                "disk_threshold_percent": 100.0,
+                "process_count_threshold": 5000
             }
         )
 

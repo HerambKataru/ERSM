@@ -106,8 +106,8 @@ class LinuxAdapter(BasePlatformAdapter):
             "/etc/xdg/autostart"
         ]
 
-    def get_usb_devices(self) -> List[Dict[str, str]]:
-        """Queries connected USB devices on Linux via lsusb or /sys/bus/usb/devices."""
+    def get_usb_devices_detailed(self) -> List[Dict[str, Any]]:
+        """Queries connected USB devices on Linux via lsusb."""
         devices = []
         try:
             output = subprocess.check_output(["lsusb"], text=True, stderr=subprocess.DEVNULL)
@@ -115,7 +115,49 @@ class LinuxAdapter(BasePlatformAdapter):
                 if "ID" in line:
                     parts = line.split("ID")
                     if len(parts) > 1:
-                        devices.append({"name": parts[1].strip(), "type": "USB Device"})
+                        id_name = parts[1].strip()
+                        id_parts = id_name.split()
+                        vid_pid = id_parts[0] if id_parts else "0000:0000"
+                        dev_name = " ".join(id_parts[1:]) if len(id_parts) > 1 else id_name
+                        vid = vid_pid.split(":")[0] if ":" in vid_pid else "0000"
+                        pid = vid_pid.split(":")[1] if ":" in vid_pid else "0000"
+                        devices.append({
+                            "name": dev_name or id_name,
+                            "vendor": f"Vendor {vid}",
+                            "product_id": f"0x{pid}",
+                            "serial": "N/A",
+                            "is_storage": "storage" in line.lower() or "disk" in line.lower()
+                        })
         except Exception:
             pass
         return devices
+
+    def get_firewall_status(self) -> Dict[str, Any]:
+        """Queries UFW or iptables firewall status on Linux."""
+        enabled = True
+        try:
+            output = subprocess.check_output(["ufw", "status"], text=True, stderr=subprocess.DEVNULL)
+            if "inactive" in output.lower():
+                enabled = False
+        except Exception:
+            pass
+        return {"enabled": enabled, "config_changed": False, "blocked_events": []}
+
+    def get_external_security_logs(self) -> List[Dict[str, Any]]:
+        """Queries journalctl or syslog for clamav/auditd alerts on Linux."""
+        alerts = []
+        try:
+            cmd = ["journalctl", "-u", "clamav-daemon", "-n", "10", "--no-pager"]
+            output = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+            for line in output.splitlines():
+                if "FOUND" in line or "FOUND" in line.upper():
+                    alerts.append({
+                        "event_type": "MALWARE_ALERT",
+                        "severity": "CRITICAL",
+                        "message": line.strip(),
+                        "provider": "ClamAV"
+                    })
+        except Exception:
+            pass
+        return alerts
+

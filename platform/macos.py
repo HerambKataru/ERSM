@@ -95,20 +95,86 @@ class MacOSAdapter(BasePlatformAdapter):
             "/etc/pam.d"
         ]
 
-    def get_usb_devices(self) -> List[Dict[str, str]]:
+    def get_usb_devices_detailed(self) -> List[Dict[str, Any]]:
         """Queries connected USB devices on macOS using system_profiler."""
         devices = []
         try:
-            output = subprocess.check_output(["system_profiler", "SPUSBDataType", "-xml"], text=True, stderr=subprocess.DEVNULL)
-            # Simple fallback text parsing if XML parsing is verbose
             txt_output = subprocess.check_output(["system_profiler", "SPUSBDataType"], text=True, stderr=subprocess.DEVNULL)
             current_dev = None
+            current_vendor = "Unknown Vendor"
+            current_product_id = "0x0000"
+            current_serial = "N/A"
+            is_storage = False
+
             for line in txt_output.splitlines():
                 line_str = line.strip()
-                if line_str and not line_str.startswith("Product ID:") and not line_str.startswith("Vendor ID:") and line.startswith("        ") and not line.startswith("          "):
+                if line.startswith("        ") and not line.startswith("          ") and line_str:
+                    if current_dev and "Host Controller" not in current_dev and "Hub" not in current_dev:
+                        devices.append({
+                            "name": current_dev,
+                            "vendor": current_vendor,
+                            "product_id": current_product_id,
+                            "serial": current_serial,
+                            "is_storage": is_storage
+                        })
                     current_dev = line_str.rstrip(":")
-                    if current_dev and current_dev not in [d["name"] for d in devices] and "Host Controller" not in current_dev:
-                        devices.append({"name": current_dev, "type": "USB Device"})
+                    current_vendor = "Unknown Vendor"
+                    current_product_id = "0x0000"
+                    current_serial = "N/A"
+                    is_storage = False
+                elif "Vendor ID:" in line_str:
+                    current_vendor = line_str.split("Vendor ID:")[-1].strip()
+                elif "Product ID:" in line_str:
+                    current_product_id = line_str.split("Product ID:")[-1].strip()
+                elif "Serial Number:" in line_str:
+                    current_serial = line_str.split("Serial Number:")[-1].strip()
+                elif "Media:" in line_str or "BSD Name:" in line_str or "Capacity:" in line_str:
+                    is_storage = True
+
+            if current_dev and "Host Controller" not in current_dev and "Hub" not in current_dev:
+                devices.append({
+                    "name": current_dev,
+                    "vendor": current_vendor,
+                    "product_id": current_product_id,
+                    "serial": current_serial,
+                    "is_storage": is_storage
+                })
         except Exception:
             pass
         return devices
+
+    def get_firewall_status(self) -> Dict[str, Any]:
+        """Queries macOS Application Firewall via socketfilterfw."""
+        enabled = True
+        try:
+            cmd = ["/usr/libexec/ApplicationFirewall/socketfilterfw", "--getglobalstate"]
+            output = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+            if "disabled" in output.lower():
+                enabled = False
+        except Exception:
+            pass
+        return {"enabled": enabled, "config_changed": False, "blocked_events": []}
+
+    def get_external_security_logs(self) -> List[Dict[str, Any]]:
+        """Queries macOS log show for XProtect / Malware / Gatekeeper alerts."""
+        alerts = []
+        try:
+            cmd = [
+                "log", "show",
+                "--predicate", 'eventMessage CONTAINS[c] "XProtect" OR eventMessage CONTAINS[c] "Malware" OR eventMessage CONTAINS[c] "Gatekeeper"',
+                "--last", "60s",
+                "--style", "syslog"
+            ]
+            output = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+            for line in output.splitlines():
+                if "malware" in line.lower() or "xprotect" in line.lower():
+                    alerts.append({
+                        "event_type": "MALWARE_ALERT",
+                        "severity": "CRITICAL",
+                        "message": line.strip(),
+                        "provider": "macOS XProtect"
+                    })
+        except Exception:
+            pass
+        return alerts
+

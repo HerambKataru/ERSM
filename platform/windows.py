@@ -92,16 +92,52 @@ class WindowsAdapter(BasePlatformAdapter):
             r"C:\Windows\System32\Tasks"
         ]
 
-    def get_usb_devices(self) -> List[Dict[str, str]]:
+    def get_usb_devices_detailed(self) -> List[Dict[str, Any]]:
         """Queries PNP USB devices via PowerShell on Windows."""
         devices = []
         try:
-            cmd = 'powershell "Get-PnpDevice -Class USB -Status OK | Select-Object -Property FriendlyName"'
+            cmd = 'powershell "Get-PnpDevice -Class USB -Status OK | Select-Object FriendlyName, InstanceId, Manufacturer"'
             output = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL, shell=True)
             for line in output.splitlines()[3:]:
                 dev = line.strip()
                 if dev:
-                    devices.append({"name": dev, "type": "USB Device"})
+                    devices.append({
+                        "name": dev,
+                        "vendor": "Generic Windows USB Vendor",
+                        "product_id": "0x0000",
+                        "serial": "N/A",
+                        "is_storage": "Disk" in dev or "Storage" in dev or "Mass" in dev
+                    })
         except Exception:
             pass
         return devices
+
+    def get_firewall_status(self) -> Dict[str, Any]:
+        """Queries Windows Defender Firewall status via PowerShell / netsh."""
+        enabled = True
+        try:
+            cmd = 'powershell "Get-NetFirewallProfile | Select-Object Name, Enabled"'
+            output = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL, shell=True)
+            if "False" in output:
+                enabled = False
+        except Exception:
+            pass
+        return {"enabled": enabled, "config_changed": False, "blocked_events": []}
+
+    def get_external_security_logs(self) -> List[Dict[str, Any]]:
+        """Queries Windows Security & Defender event logs (e.g., Event ID 1116/1117)."""
+        alerts = []
+        try:
+            cmd = 'wevtutil qe "Microsoft-Windows-Windows Defender/Operational" "/q:*[System[(EventID=1116 or EventID=1117)]]" /c:3 /rd:true /f:text'
+            output = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL, shell=True)
+            if "1116" in output or "1117" in output:
+                alerts.append({
+                    "event_type": "MALWARE_ALERT",
+                    "severity": "CRITICAL",
+                    "message": "Windows Defender detected malware threat.",
+                    "provider": "Windows Defender"
+                })
+        except Exception:
+            pass
+        return alerts
+

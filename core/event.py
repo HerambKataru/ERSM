@@ -19,6 +19,14 @@ class EventCategory(str, Enum):
     INTEGRITY = "INTEGRITY"
     MALWARE = "MALWARE"
     CORRELATION = "CORRELATION"
+    USB = "USB"
+    FIREWALL = "FIREWALL"
+    DNS = "DNS"
+    GATEWAY = "GATEWAY"
+    PORT = "PORT"
+    DEVICE = "DEVICE"
+    RESOURCE = "RESOURCE"
+    FILE_ACTIVITY = "FILE_ACTIVITY"
 
 
 class EventSeverity(str, Enum):
@@ -69,6 +77,7 @@ class SecurityEvent:
     host: str = field(default_factory=get_default_host)
     platform: str = field(default_factory=get_default_platform)
     source: str = "DETECTED_BY_ERSM"
+    module: str = "General"
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
@@ -109,5 +118,7 @@ class SecurityEvent:
             host=data.get("host", get_default_host()),
             platform=data.get("platform", get_default_platform()),
             source=data.get("source", "DETECTED_BY_ERSM"),
+            module=data.get("module", "General"),
             metadata=data.get("metadata", {})
         )
+

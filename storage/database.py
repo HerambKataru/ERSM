@@ -42,6 +42,7 @@ class DatabaseManager:
                             timestamp TEXT NOT NULL,
                             host TEXT NOT NULL,
                             platform TEXT NOT NULL,
+                            module TEXT NOT NULL DEFAULT 'General',
                             category TEXT NOT NULL,
                             event TEXT NOT NULL,
                             severity TEXT NOT NULL,
@@ -52,10 +53,17 @@ class DatabaseManager:
                             metadata TEXT NOT NULL
                         )
                     """)
+                    # Check if module column exists in case existing database file was created earlier
+                    cursor = conn.execute("PRAGMA table_info(events)")
+                    columns = [row[1] for row in cursor.fetchall()]
+                    if "module" not in columns:
+                        conn.execute("ALTER TABLE events ADD COLUMN module TEXT NOT NULL DEFAULT 'General'")
+
                     conn.execute("CREATE INDEX IF NOT EXISTS idx_ts ON events(timestamp)")
                     conn.execute("CREATE INDEX IF NOT EXISTS idx_cat ON events(category)")
                     conn.execute("CREATE INDEX IF NOT EXISTS idx_sev ON events(severity)")
                     conn.execute("CREATE INDEX IF NOT EXISTS idx_risk ON events(risk)")
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_mod ON events(module)")
             finally:
                 conn.close()
 
@@ -67,13 +75,14 @@ class DatabaseManager:
                 with conn:
                     cursor = conn.execute("""
                         INSERT INTO events (
-                            timestamp, host, platform, category, event, severity,
+                            timestamp, host, platform, module, category, event, severity,
                             confidence, risk, source, message, metadata
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         event.timestamp,
                         event.host,
                         event.platform,
+                        getattr(event, "module", "General"),
                         event.category,
                         event.event,
                         event.severity,
@@ -159,3 +168,8 @@ class DatabaseManager:
                 return [dict(r) for r in rows]
             finally:
                 conn.close()
+
+    def get_events_by_day(self) -> List[Dict[str, Any]]:
+        """Queries event counts grouped by day."""
+        return self.get_daily_counts()
+

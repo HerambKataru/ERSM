@@ -1,6 +1,6 @@
 # Embedded Runtime Security Monitor (ERSM)
 
-> **B.Tech Computer Science & Engineering (CSE) Capstone Project**  
+
 > **Comprehensive End-to-End System Guide: Host Security Agent & ESP32 Hardware Console**
 
 ---
